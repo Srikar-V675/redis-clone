@@ -2,11 +2,23 @@ import socket  # noqa: F401
 import threading
 
 
+def parser(connection: socket):
+    request = connection.recv(1024)
+    data = request.decode().splitlines()
+    parsed_data = []
+    for i in range(2, len(data), 2):
+        parsed_data.append(data[i])
+    return parsed_data
+
+
 def handle_client(connection: socket):
     while True:
-        data = connection.recv(1024)
-        if not data: break
-        connection.sendall(b"+PONG\r\n")
+        parsed_data = parser(connection=connection)
+        if parsed_data[0].lower() == "echo":
+            s = parsed_data[1]
+            connection.sendall(f"${len(s)}\r\n{s}\r\n".encode())
+        else:
+            connection.sendall(b"+PONG\r\n")
 
 
 def main():
