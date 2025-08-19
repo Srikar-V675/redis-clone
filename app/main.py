@@ -1,6 +1,7 @@
 import socket  # noqa: F401
 import threading
 
+DATA = {}
 
 def parser(connection: socket):
     request = connection.recv(1024)
@@ -17,6 +18,12 @@ def handle_client(connection: socket):
         if parsed_data[0].lower() == "echo":
             s = parsed_data[1]
             connection.sendall(f"${len(s)}\r\n{s}\r\n".encode())
+        elif parsed_data[0].lower() == "set":
+            DATA[parsed_data[1]] = parsed_data[2]
+            connection.sendall(b"+OK\r\n")
+        elif parsed_data[0].lower() == "get":
+            val = DATA[parsed_data[1]]
+            connection.sendall(f"${len(val)}\r\n{val}\r\n".encode())
         else:
             connection.sendall(b"+PONG\r\n")
 
