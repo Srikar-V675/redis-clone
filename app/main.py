@@ -1,7 +1,9 @@
 import socket  # noqa: F401
 import threading
+import time 
 
 DATA = {}
+EXPIRY = {}
 
 def parser(connection: socket):
     request = connection.recv(1024)
@@ -20,10 +22,15 @@ def handle_client(connection: socket):
             connection.sendall(f"${len(s)}\r\n{s}\r\n".encode())
         elif parsed_data[0].lower() == "set":
             DATA[parsed_data[1]] = parsed_data[2]
+            if len(parsed_data) > 3 and parsed_data[3].lower() == "px":
+                EXPIRY[parsed_data[1]] = (time.time() * 1000) + int(parsed_data[4])
             connection.sendall(b"+OK\r\n")
         elif parsed_data[0].lower() == "get":
             val = DATA[parsed_data[1]]
-            connection.sendall(f"${len(val)}\r\n{val}\r\n".encode())
+            if parsed_data[1] in EXPIRY and (time.time()*1000) > EXPIRY[parsed_data[1]]:
+                connection.sendall(b"$-1\r\n")
+            else:
+                connection.sendall(f"${len(val)}\r\n{val}\r\n".encode())
         else:
             connection.sendall(b"+PONG\r\n")
 
