@@ -31,15 +31,18 @@ def handle_client(connection: socket):
                 connection.sendall(b"$-1\r\n")
             else:
                 connection.sendall(f"${len(val)}\r\n{val}\r\n".encode())
+        elif parsed_data[0].lower() == "rpush":
+            if parsed_data[1] in DATA:
+                DATA[parsed_data[1]].append(parsed_data[2])
+            else:
+                DATA[parsed_data[1]] = [parsed_data[2]]
+            connection.sendall(f":{len(DATA[parsed_data[1]])}\r\n".encode())
         else:
             connection.sendall(b"+PONG\r\n")
 
 
 def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!")
-
-    # Uncomment this to pass the first stage
     
     # server
     server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
