@@ -62,6 +62,7 @@ class CommandHandler:
             "RPUSH": self.handle_rpush,
             "LPUSH": self.handle_lpush,
             "LRANGE": self.handle_lrange,
+            "LLEN": self.handle_llen,
         }
     
     
@@ -105,6 +106,11 @@ class CommandHandler:
         start = int(args[1])
         stop = int(args[2])
         return self.datastore.lrange(key, start, stop)
+    
+    
+    def handle_llen(self, *args):
+        key = args[0]
+        return self.datastore.llen(key)
         
 
 class DataStore:
@@ -177,6 +183,16 @@ class DataStore:
                 return []
             else:
                 return list(self.STORE[key]["value"])[start:stop+1 or None] # -1+1 = 0 -> 0 or None -> None(last element)
+        except Exception as e:
+            raise(e)
+    
+    
+    def llen(self, key):
+        try:
+            if key in self.STORE:
+                return len(self.STORE[key]["value"])
+            else:
+                return 0
         except Exception as e:
             raise(e)
 
