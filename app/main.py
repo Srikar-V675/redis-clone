@@ -1,6 +1,7 @@
 import socket  # noqa: F401
 import threading
 import time 
+from collections import deque
 
 
 class Parser:
@@ -59,6 +60,7 @@ class CommandHandler:
             "SET": self.handle_set,
             "GET": self.handle_get,
             "RPUSH": self.handle_rpush,
+            "LPUSH": self.handle_lpush,
             "LRANGE": self.handle_lrange,
         }
     
@@ -66,8 +68,6 @@ class CommandHandler:
     def execute(self, cmd, *args):
         if cmd in self.commands:
             return self.commands[cmd](*args)
-        else:
-            return f"-ERR unknown command '{cmd}'"
     
     
     def handle_echo(self, message):
@@ -95,6 +95,11 @@ class CommandHandler:
         return self.datastore.rpush(key, *values)
     
     
+    def handle_lpush(self, *args):
+        key, *values = args
+        return self.datastore.lpush(key, *values)
+    
+    
     def handle_lrange(self, *args):
         key = args[0]
         start = int(args[1])
@@ -104,18 +109,19 @@ class CommandHandler:
 
 class DataStore:
     def __init__(self):
-        self.DATA = {}
-        self.EXPIRY = {}
-        self.LIST = {}
+        self.STORE = {}
     
     
     def set(self, key, value, *options):
         try:
-            self.DATA[key] = value
-            print("Options:", options)
+            self.STORE[key] = {
+                "value": value,
+                "expiry": None,
+                "type": "str",
+            }
             if options:
                 if options[0].upper() == "PX":
-                    self.EXPIRY[key] = (
+                    self.STORE[key]["expiry"] = (
                         time.time() * 1000) + int(options[1]
                     )
             return "OK"
@@ -125,10 +131,9 @@ class DataStore:
     
     def get(self, key):
         try:
-            value = self.DATA[key]
-            if key in self.EXPIRY and (time.time()*1000) > self.EXPIRY[key]:
-                del self.DATA[key]
-                del self.EXPIRY[key]
+            value = self.STORE[key]["value"]
+            if self.STORE[key]["expiry"] and (time.time()*1000) > self.STORE[key]["expiry"]:
+                del self.STORE[key]
                 return None
             else:
                 return value
@@ -138,32 +143,40 @@ class DataStore:
     
     def rpush(self, key, *values):
         try:
-            if key in self.LIST:
-                self.LIST[key].extend(values)
+            if key in self.STORE:
+                self.STORE[key]["value"].extend(values)
             else:
-                self.LIST[key] = list(values)
-            return len(self.LIST[key])
+                self.STORE[key] = {
+                    "value": deque(values),
+                    "expiry": None,
+                    "type": "list",
+                }
+            return len(self.STORE[key]["value"])
+        except Exception as e:
+            raise(e)
+    
+    
+    def lpush(self, key, *values):
+        try:
+            if key in self.STORE:
+                self.STORE[key]["value"].extendleft(values)
+            else:
+                self.STORE[key] = {
+                    "value": deque(reversed(values)),
+                    "expiry": None, 
+                    "type": "list",
+                }
+            return len(self.STORE[key]["value"])
         except Exception as e:
             raise(e)
     
     
     def lrange(self, key, start: int, stop: int):
         try:
-            if key not in self.LIST:
+            if key not in self.STORE:
                 return []
             else:
-                # start stop to +ve
-                length = len(self.LIST[key])
-                if start < 0:
-                    start += length
-                if stop < 0:
-                    stop += length
-                start = 0 if start < 0 else start
-                stop = 0 if stop < 0 else stop
-                if start >= length or start > stop:
-                    return []
-                stop = length-1 if stop >= length else stop
-                return self.LIST[key][start:stop+1]
+                return list(self.STORE[key]["value"])[start:stop+1 or None] # -1+1 = 0 -> 0 or None -> None(last element)
         except Exception as e:
             raise(e)
 
