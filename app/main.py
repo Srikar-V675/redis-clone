@@ -28,6 +28,11 @@ class Parser:
     
     
     @staticmethod
+    def construct_bulk_string(s: str):
+        return f"${len(s)}\r\n{s}\r\n"
+    
+    
+    @staticmethod
     def format_response(response):
         if response is None:
             return "$-1\r\n"
@@ -35,13 +40,14 @@ class Parser:
             if response == "OK" or response == "PONG":
                 return f"+{response}\r\n"
             else:
-                return f"${len(response)}\r\n{response}\r\n"
+                return Parser.construct_bulk_string(s=response)
         elif isinstance(response, int):
             return f":{response}\r\n"
         elif isinstance(response, list):
-            pass
-        else:
-            return "+PONG\r\n"
+            s = [f"*{len(response)}\r\n"]
+            for resp in response:
+                s.append(Parser.construct_bulk_string(s=resp))
+            return ''.join(s)
 
 
 class CommandHandler:
@@ -53,6 +59,7 @@ class CommandHandler:
             "SET": self.handle_set,
             "GET": self.handle_get,
             "RPUSH": self.handle_rpush,
+            "LRANGE": self.handle_lrange,
         }
     
     
@@ -86,6 +93,13 @@ class CommandHandler:
     def handle_rpush(self, *args):
         key, *values = args
         return self.datastore.rpush(key, *values)
+    
+    
+    def handle_lrange(self, *args):
+        key = args[0]
+        start = int(args[1])
+        stop = int(args[2])
+        return self.datastore.lrange(key, start, stop)
         
 
 class DataStore:
@@ -129,6 +143,20 @@ class DataStore:
             else:
                 self.LIST[key] = list(values)
             return len(self.LIST[key])
+        except Exception as e:
+            raise(e)
+    
+    
+    def lrange(self, key, start: int, stop: int):
+        try:
+            if start > stop or key not in self.LIST:
+                return []
+            else:
+                length = len(self.LIST[key])
+                if start >= length:
+                    return []
+                stop = length-1 if stop >= length else stop
+                return self.LIST[key][start:stop+1]
         except Exception as e:
             raise(e)
 
