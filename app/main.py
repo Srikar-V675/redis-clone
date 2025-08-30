@@ -149,11 +149,18 @@ class DataStore:
     
     def lrange(self, key, start: int, stop: int):
         try:
-            if start > stop or key not in self.LIST:
+            if key not in self.LIST:
                 return []
             else:
+                # start stop to +ve
                 length = len(self.LIST[key])
-                if start >= length:
+                if start < 0:
+                    start += length
+                if stop < 0:
+                    stop += length
+                start = 0 if start < 0 else start
+                stop = 0 if stop < 0 else stop
+                if start >= length or start > stop:
                     return []
                 stop = length-1 if stop >= length else stop
                 return self.LIST[key][start:stop+1]
