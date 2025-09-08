@@ -63,6 +63,8 @@ class CommandHandler:
             "LPUSH": self.handle_lpush,
             "LRANGE": self.handle_lrange,
             "LLEN": self.handle_llen,
+            "LPOP": self.handle_lpop,
+            "BLPOP": self.handle_blpop,
         }
     
     
@@ -111,6 +113,18 @@ class CommandHandler:
     def handle_llen(self, *args):
         key = args[0]
         return self.datastore.llen(key)
+    
+    
+    def handle_lpop(self, *args):
+        key = args[0]
+        num = int(args[1]) if len(args) == 2 else 1
+        return self.datastore.lpop(key, num)
+    
+    
+    def handle_blpop(self, *args):
+        key = args[0]
+        timeout = int(args[1])
+        return self.datastore.blpop(key, timeout)
         
 
 class DataStore:
@@ -150,7 +164,17 @@ class DataStore:
     def rpush(self, key, *values):
         try:
             if key in self.STORE:
-                self.STORE[key]["value"].extend(values)
+                start = 0
+                if "blocking_clients" in self.STORE[key]:
+                    for val in values:
+                        if not self.STORE[key]["blocking_clients"]:
+                            break
+                        client = self.STORE[key]["blocking_clients"].popleft()
+                        client["val"] = val
+                        client["event"].set()
+                        start += 1
+                if start < len(values):
+                    self.STORE[key]["value"].extend(values[start:])
             else:
                 self.STORE[key] = {
                     "value": deque(values),
@@ -195,6 +219,47 @@ class DataStore:
                 return 0
         except Exception as e:
             raise(e)
+    
+    # TODO: check list type
+    def lpop(self, key, num):
+        try:
+            if key in self.STORE:
+                if len(self.STORE[key]["value"]) == 0:
+                    return None
+                else:
+                    num = min(num, len(self.STORE[key]["value"]))
+                    pop = [self.STORE[key]["value"].popleft() for _ in range(num)]
+                    return pop[0] if num == 1 else pop
+            else:
+                return None
+        except Exception as e:
+            raise(e)
+    
+    # TODO: check if key is holdign list type
+    def blpop(self, key, timeout=0):
+        try:
+            if key not in self.STORE or (key in self.STORE and not self.STORE[key]["value"]):
+                waiter = {
+                    "event": threading.Event(),
+                    "val": None
+                }
+                if key not in self.STORE:
+                    self.STORE[key] = {
+                        "value": deque(),
+                        "expiry": None, 
+                        "type": "list",
+                    }
+                self.STORE[key].setdefault("blocking_clients", deque()).append(waiter)
+                signaled = waiter["event"].wait(None if timeout == 0 else timeout)
+                if not signaled:
+                    self.STORE[key]["blocking_clients"].remove(waiter)
+                    return None
+                else:
+                    return [key, waiter["val"]]
+            else:
+                return [key, self.STORE[key]["value"].popleft()]
+        except Exception as e:
+            raise(e)
 
 
 class Server:
@@ -214,6 +279,8 @@ class Server:
         with client_socket:
             while True:
                 raw = client_socket.recv(1024)
+                if not raw:
+                    continue
                 cmd, args = Parser.parse_request(request=raw)
                 response = self.cmd_handler.execute(cmd, *args)
                 print(response)

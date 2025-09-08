@@ -1,0 +1,9 @@
+[project]
+name = "codecrafters-redis-python"
+version = "0.1.0"
+description = "MY version of the codecrafters Redis challenge"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pytest>=8.4.2",
+]
