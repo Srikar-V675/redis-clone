@@ -285,7 +285,7 @@ def test_10_blocking_retrieval(server):
     assert parsed == ["c"]
 
 def test_11_blocking_retrieval_w_timeout(server):
-    print("\n[tester] Testing #S16: Blocking Retrieval")
+    print("\n[tester] Testing #S16: Blocking Retrieval with Timeout")
     s1 = socket.create_connection(("localhost", 6379))
     
     print("[tester] [client-1] > BLPOP blfoo1 1")

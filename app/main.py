@@ -2,53 +2,9 @@ import socket  # noqa: F401
 import threading
 import time 
 from collections import deque
-
-
-class Parser:
-    def __init__(self):
-        pass
-    
-    
-    @staticmethod
-    def parse_request(request: bytes):
-        data = request.decode().split("\r\n")
-        num_elements = int(data[0][1:])
-        tokens = []
-        
-        i = 1
-        while i < len(data) and len(tokens) < num_elements:
-            if data[i].startswith("$"):
-                length = int(data[i][1:])
-                tokens.append(data[i+1])
-                i += 2
-            else:
-                i += 1
-        
-        cmd, *args = tokens
-        return cmd.upper(), args
-    
-    
-    @staticmethod
-    def construct_bulk_string(s: str):
-        return f"${len(s)}\r\n{s}\r\n"
-    
-    
-    @staticmethod
-    def format_response(response):
-        if response is None:
-            return "$-1\r\n"
-        elif isinstance(response, str):
-            if response == "OK" or response == "PONG":
-                return f"+{response}\r\n"
-            else:
-                return Parser.construct_bulk_string(s=response)
-        elif isinstance(response, int):
-            return f":{response}\r\n"
-        elif isinstance(response, list):
-            s = [f"*{len(response)}\r\n"]
-            for resp in response:
-                s.append(Parser.construct_bulk_string(s=resp))
-            return ''.join(s)
+from typing import Dict
+from .parser import RESPParser, RESPSerializer
+from commands.core import RedisCommandHandler
 
 
 class CommandHandler:
@@ -65,6 +21,7 @@ class CommandHandler:
             "LLEN": self.handle_llen,
             "LPOP": self.handle_lpop,
             "BLPOP": self.handle_blpop,
+            "TYPE": self.handle_type,
         }
     
     
@@ -125,6 +82,11 @@ class CommandHandler:
         key = args[0]
         timeout = int(args[1])
         return self.datastore.blpop(key, timeout)
+    
+    
+    def handle_type(self, *args):
+        key = args[0]
+        return self.datastore.type(key)
         
 
 class DataStore:
@@ -137,7 +99,7 @@ class DataStore:
             self.STORE[key] = {
                 "value": value,
                 "expiry": None,
-                "type": "str",
+                "type": "string",
             }
             if options:
                 if options[0].upper() == "PX":
@@ -260,13 +222,23 @@ class DataStore:
                 return [key, self.STORE[key]["value"].popleft()]
         except Exception as e:
             raise(e)
+    
+    
+    def type(self, key):
+        try:
+            if key in self.STORE:
+                return self.STORE[key]["type"]
+            else:
+                return "none"
+        except Exception as e:
+            raise(e)
 
 
 class Server:
     def __init__(self):
         self.server_socket: socket = socket.create_server(("localhost", 6379), reuse_port=True)
-        self.datastore = DataStore()
-        self.cmd_handler = CommandHandler(self.datastore)
+        self.db: Dict= {}
+        self.cmd_handler: RedisCommandHandler = RedisCommandHandler(db=self.db)
     
     def start(self):
         while True:
@@ -276,15 +248,24 @@ class Server:
             thread.start()
     
     def handle_client(self, client_socket: socket):
-        with client_socket:
+        try:
             while True:
                 raw = client_socket.recv(1024)
+            
                 if not raw:
-                    continue
-                cmd, args = Parser.parse_request(request=raw)
-                response = self.cmd_handler.execute(cmd, *args)
-                print(response)
-                client_socket.sendall(Parser.format_response(response).encode())
+                    break
+            
+                tokens = RESPParser.parse_request(raw)
+                if tokens is None:
+                    error_response = RESPSerializer.serialize_error("ERR Invalid command format")
+                    client_socket.sendall(error_response)
+                else:
+                    response = self.cmd_handler.handle_command(tokens)
+                    client_socket.sendall(response)
+        except Exception as e:
+            print("\n Unexpected Error:", str(e))
+        finally:
+            client_socket.close()
                 
 
 def main():
