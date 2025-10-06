@@ -1,8 +1,8 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 class RESPSerializer:
     """
-    Handles Redis RESP(Redis Serialization Protocol) serialization
+    Handles Redis RESP(Redis Serialization Protocol) serialization: python obj -> bytes
     """
     
     @staticmethod
@@ -57,7 +57,7 @@ class RESPSerializer:
         return f"${len(data)}\r\n{data}\r\n".encode("utf-8")
     
     @staticmethod
-    def serialize_array(items: List[str, None]) -> bytes:
+    def serialize_array(items: List[Optional[str]]) -> bytes:
         """Serialize an array: *<num-of-elements>\r\n<element-1>\r\n...
 
         Args:
@@ -73,13 +73,15 @@ class RESPSerializer:
         for item in items:
             if item is None:
                 result += b"_\r\n"
+            elif isinstance(item, list):
+                result += RESPSerializer.serialize_array(item)
             else:
                 result += RESPSerializer.serialize_bulk_string(item)
         return result
 
 
 class RESPParser:
-    """Handles Redis RESP(Redis Serialization Protocol) parsing
+    """Handles Redis RESP(Redis Serialization Protocol) parsing: bytes -> python list
     """
     
     @staticmethod
@@ -99,7 +101,7 @@ class RESPParser:
             if not lines or not lines[0].startswith("*"):
                 return None
             
-            num_elements = int(data[0][1:])
+            num_elements = int(lines[0][1:])
             if num_elements <= 0:
                 return []
             

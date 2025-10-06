@@ -1,7 +1,7 @@
-from .core import RedisCommand
+from .base import RedisCommand
 from typing import List, Dict
 import time
-from ..parser import RESPSerializer
+from app.parser import RESPSerializer
 
 class EchoCommand(RedisCommand):
     """Implementation of ECHO command"""
@@ -12,7 +12,7 @@ class EchoCommand(RedisCommand):
                 "ERR wrong number of arguments for 'echo' command"
             )
         
-        return RESPSerializer.serialize_simple_string(args[0])
+        return RESPSerializer.serialize_bulk_string(args[0])
     
     def validate_args(self, args:List[str]) -> bool:
         return len(args) == 1
@@ -126,9 +126,9 @@ class TypeCommand(RedisCommand):
         entry = self.db.get(key)
         
         if entry:
-            return RESPSerializer.serialize_bulk_string(entry["type"])
+            return RESPSerializer.serialize_simple_string(entry["type"])
         else:
-            return RESPSerializer.serialize_bulk_string("none")
+            return RESPSerializer.serialize_simple_string("none")
     
     def validate_args(self, args: List[str]) -> bool:
         return len(args) == 1

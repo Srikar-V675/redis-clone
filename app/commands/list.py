@@ -1,6 +1,6 @@
-from .core import RedisCommand
+from .base import RedisCommand
 from typing import List, Dict
-from ..parser import RESPSerializer
+from app.parser import RESPSerializer
 from collections import deque
 from threading import Event
 

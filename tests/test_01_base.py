@@ -1,81 +1,94 @@
 import socket
-from helpers import send_command, to_resp_array, parse_resp
+import time
+import pytest
+from tests.helpers import assert_command
+from app.parser import RESPSerializer
 
-def test_01_ping(server):
+@pytest.mark.parametrize("cmd,expected", [
+    (["PING"], RESPSerializer.serialize_simple_string("PONG")),
+    (["PiNg"], RESPSerializer.serialize_simple_string("PONG")),  # case-insensitivity check (optional)
+])
+def test_ping(server, cmd, expected):
     print("\n[tester] Testing #S1: Respond to PING")
-    resp = send_command("PING")
-    print("[tester] [client] > PING")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == "PONG"
+    assert_command(cmd, expected)
 
-def test_02_multiple_pings(server):
+
+def test_multiple_pings(server):
     print("\n[tester] Testing #S2: Respond to Multiple PINGs")
-    for i in range(3):
-        resp = send_command("PING")
-        print(f"[tester] [client] > PING ({i+1})")
-        parsed = parse_resp(resp)
-        print(f"[tester] [client] Received {parsed}")
-        assert parsed == "PONG"
-    
-def test_03_concurrent_clients(server):
+    for _ in range(3):
+        assert_command(["PING"], RESPSerializer.serialize_simple_string("PONG"))
+
+
+def test_concurrent_clients(server):
     print("\n[tester] Testing #S3: Handle Concurrent Clients")
     s1 = socket.create_connection(("localhost", 6379))
     s2 = socket.create_connection(("localhost", 6379))
 
-    # Send PING from client 1
-    s1.sendall(to_resp_array("PING"))
+    cmd = ["PING"]
+    expected = RESPSerializer.serialize_simple_string("PONG")
+
+    # client 1
+    s1.sendall(RESPSerializer.serialize_array(cmd))
     resp1 = s1.recv(1024)
     print("[tester] [client-1] > PING")
-    parsed1 = parse_resp(resp1)
-    print(f"[tester] [client-1] Received {parsed1}")
-    assert parsed1 == "PONG"
+    print(f"[tester] Expected: {expected} | Received: {resp1}")
+    assert resp1 == expected
 
-    # Send PING from client 2
-    s2.sendall(to_resp_array("PING"))
+    # client 2
+    s2.sendall(RESPSerializer.serialize_array(cmd))
     resp2 = s2.recv(1024)
     print("[tester] [client-2] > PING")
-    parsed2 = parse_resp(resp2)
-    print(f"[tester] [client-2] Received {parsed2}")
-    assert parsed2 == "PONG"
+    print(f"[tester] Expected: {expected} | Received: {resp2}")
+    assert resp2 == expected
 
     s1.close()
     s2.close()
 
-def test_04_echo(server):
+
+def test_echo(server):
     print("\n[tester] Testing #S4: Implement ECHO Command")
-    resp = send_command("ECHO hello")
-    print("[tester] [client] > ECHO hello")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == "hello"
+    assert_command(
+        ["ECHO", "hello"],
+        RESPSerializer.serialize_bulk_string("hello")
+    )
 
-def test_05_set_get(server):
+
+def test_set_get(server):
     print("\n[tester] Testing #S5: Implement SET & GET Commands")
-    resp = send_command("SET foo bar")
-    print("[tester] [client] > SET foo bar")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == "OK"
-    
-    resp = send_command("GET foo")
-    print("[tester] [client] > GET foo")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == "bar"
+    assert_command(
+        ["SET", "set_cmd", "bar"],
+        RESPSerializer.serialize_simple_string("OK")
+    )
+    assert_command(
+        ["GET", "set_cmd"],
+        RESPSerializer.serialize_bulk_string("bar")
+    )
 
-def test_06_expiry(server):
+
+def test_expiry(server):
     print("\n[tester] Testing #S6: Expiry")
-    resp = send_command("SET foo bar px 100")
-    print("[tester] [client] > SET foo bar px 100")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == "OK"
-    
-    import time
+    assert_command(
+        ["SET", "set_expiry", "bar", "px", "100"],
+        RESPSerializer.serialize_simple_string("OK")
+    )
     time.sleep(0.2)
-    resp = send_command("GET foo")
-    print("[tester] [client] > GET foo")
-    parsed = parse_resp(resp)
-    print(f"[tester] [client] Received {parsed}")
-    assert parsed == None
+    assert_command(
+        ["GET", "set_expiry"],
+        b"_\r\n"  # Null bulk string in RESP3
+    )
+
+
+def test_type(server):
+    print("\n[tester] Testing #S17: TYPE Command")
+    assert_command(
+        ["SET", "ktype", "foo"],
+        RESPSerializer.serialize_simple_string("OK")
+    )
+    assert_command(
+        ["TYPE", "ktype"],
+        RESPSerializer.serialize_simple_string("string")
+    )
+    assert_command(
+        ["TYPE", "blah"],
+        RESPSerializer.serialize_simple_string("none")
+    )

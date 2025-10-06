@@ -1,28 +1,16 @@
-from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
-from ..parser import RESPSerializer
-from .general import *
-from .list import *
-
-class RedisCommand(ABC):
-    """Abstract Base class for Redis commands"""
-    
-    @abstractmethod
-    def execute(self, args: List[str]) -> bytes:
-        """Execute command and return RESP bytes response"""
-        pass
-    
-    @abstractmethod
-    def validate_args(self, args: List[str]) -> bool:
-        """Validate command arguments"""
-        pass
+from app.parser import RESPSerializer
+from app.commands.general import *
+from app.commands.list import *
+from app.commands.stream import *
 
 
 class RedisCommandHandler:
     """Routes to corresponding command class based on command received"""
     
-    def __init__(self, db: Optional[Dict]):
+    def __init__(self, db: Optional[Dict], waiting_clients: Dict):
         self.db = db if not None else {}
+        self.waiting_clients = waiting_clients
         self.commands = {
             # general commands
             "ECHO": EchoCommand(),
@@ -37,6 +25,10 @@ class RedisCommandHandler:
             "LLEN": LLenCommand(db=self.db),
             "LPOP": LPopCommand(db=self.db),
             "BLPOP": BLPopCommand(db=self.db),
+            # stream commands
+            "XADD": XAddCommand(db=self.db, waiting_clients=self.waiting_clients),
+            "XRANGE": XRangeCommand(db=self.db, waiting_clients=self.waiting_clients),
+            "XREAD": XreadStreamsCommand(db=self.db, waiting_clients=self.waiting_clients),
         }
     
     def handle_command(self, tokens: List[str]) -> bytes:
